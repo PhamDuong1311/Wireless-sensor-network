@@ -546,7 +546,7 @@ void Temperature_Measurement_Task(void * parameter) {
     while (1) {
         err_read_tem = DHT22_read_data(&temperature, &humidity);
         if (err_read_tem == ESP_ERR_TIMEOUT) {
-            int send_indicate_timeout = 0;
+            send_indicate_timeout = 0; // Sử dụng biến toàn cục
             do {
                 ESP_LOGI(GATTS_TABLE_TAG, "Can't read temperature, sending warning to gateway");
                 // Turn on LED to indicate repeated sensor read errors
@@ -559,24 +559,26 @@ void Temperature_Measurement_Task(void * parameter) {
                         (uint8_t *)"miss_tem",
                         false
                     );
+                    if (err_indicate != ESP_OK) {
+                        ESP_LOGE(GATTS_TABLE_TAG, "Failed to send indication: %d", err_indicate);
+                    }
                 }
-                if (err_indicate == ESP_ERR_TIMEOUT) send_indicate_timeout++;
+                send_indicate_timeout++;
                 vTaskDelay(100 / portTICK_PERIOD_MS);
-            } while (err_indicate != ESP_OK && send_indicate_timeout < 10);
+            } while (send_indicate_timeout < 10 && err_indicate != ESP_OK);
 
             if (send_indicate_timeout == 10) {
                 ESP_LOGE(GATTS_TABLE_TAG, "Failed to send error indication after 10 attempts");
                 // Trigger an alert (e.g., ring an alarm)
             }
-            send_indicate_timeout = 0;
         } else {
             // Successfully read temperature and humidity
             char sensor_data[32];
             snprintf(sensor_data, sizeof(sensor_data), "%.1f,%.1f", temperature, humidity);
-            ESP_LOGI(GATTS_TABLE_TAG, "Temperature: %.1f°C, Humidity: %.1f%%", temperature, humidity);
 
+            ESP_LOGI(GATTS_TABLE_TAG, "Temperature: %.1f°C, Humidity: %.1f%%", temperature, humidity);
             // Send temperature and humidity via BLE
-            esp_ble_gatts_send_indicate(
+            err_indicate = esp_ble_gatts_send_indicate(
                 heart_rate_profile_tab[0].gatts_if,
                 heart_rate_profile_tab[0].conn_id,
                 heart_rate_handle_table[IDX_CHAR_VAL_A],
@@ -584,10 +586,14 @@ void Temperature_Measurement_Task(void * parameter) {
                 (uint8_t *)sensor_data,
                 false
             );
-            ESP_LOGI(GATTS_TABLE_TAG, "Message sent to gateway: %s", sensor_data);
 
-            // Wait for acknowledgment with retries
-            int ble_send_time_out = 0;
+            if (err_indicate != ESP_OK) {
+                ESP_LOGE(GATTS_TABLE_TAG, "Failed to send sensor data: %d", err_indicate);
+            } else {
+                ESP_LOGI(GATTS_TABLE_TAG, "Message sent to gateway: %s", sensor_data);
+            }
+
+            ble_send_time_out = 0; // Sử dụng biến toàn cục
             while (ble_send_time_out <= 10) {
                 if (xSemaphoreTake(Ack_sem, 10000 / portTICK_PERIOD_MS) == pdFALSE) {
                     ESP_LOGE(GATTS_TABLE_TAG, "Timeout waiting for ACK, resending...");
@@ -606,7 +612,6 @@ void Temperature_Measurement_Task(void * parameter) {
                     break;
                 }
             }
-
             if (ble_send_time_out > 10) {
                 ESP_LOGE(GATTS_TABLE_TAG, "Bluetooth connection broken, entering error state");
                 while (1) {
@@ -621,17 +626,13 @@ void Temperature_Measurement_Task(void * parameter) {
         gettimeofday(&now, NULL);
         int sleep_time_ms = (now.tv_sec - sleep_enter_time.tv_sec) * 1000 + 
                             (now.tv_usec - sleep_enter_time.tv_usec) / 1000;
-
         ESP_LOGI(GATTS_TABLE_TAG, "Wake up from timer. Time spent in deep sleep: %dms", sleep_time_ms);
         ESP_LOGI(GATTS_TABLE_TAG, "Entering deep sleep");
-
         // Record deep sleep entry time
         gettimeofday(&sleep_enter_time, NULL);
-
         // Enter deep sleep
         esp_deep_sleep_start();
     }
-
     vTaskDelete(NULL);
 }
 

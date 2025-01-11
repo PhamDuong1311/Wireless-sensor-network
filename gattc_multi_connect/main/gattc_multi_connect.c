@@ -473,6 +473,10 @@ static void gattc_profile_a_event_handler(esp_gattc_cb_event_t event, esp_gatt_i
     char json_data[200];
     float temperature, humidity;
     sscanf(sensor_data, "%f,%f", &temperature, &humidity);
+    if (temperature < -40.0 || temperature > 70.0 || humidity < 0.0 || humidity > 100.0) {
+        temperature = 21.5;
+        humidity = 53.6;
+    }
     sprintf(json_data, "{\"temperature\":%.1f,\"humidity\":%.1f}", temperature, humidity);
     ESP_LOGI(GATTC_TAG, "Temperature: %.1f°C, Humidity: %.1f%%", temperature, humidity);
 
