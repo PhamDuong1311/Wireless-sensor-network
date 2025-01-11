@@ -595,7 +595,7 @@ void Temperature_Measurement_Task(void * parameter) {
 
             ble_send_time_out = 0; // Sử dụng biến toàn cục
             while (ble_send_time_out <= 10) {
-                if (xSemaphoreTake(Ack_sem, 10000 / portTICK_PERIOD_MS) == pdFALSE) {
+                if (xSemaphoreTake(Ack_sem, 2500 / portTICK_PERIOD_MS) == pdFALSE) {
                     ESP_LOGE(GATTS_TABLE_TAG, "Timeout waiting for ACK, resending...");
                     esp_ble_gatts_send_indicate(
                         heart_rate_profile_tab[0].gatts_if,

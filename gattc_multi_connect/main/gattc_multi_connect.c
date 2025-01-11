@@ -469,23 +469,27 @@ static void gattc_profile_a_event_handler(esp_gattc_cb_event_t event, esp_gatt_i
     sensor_data[param->notify.value_len] = '\0';
 
 
-    //Dinh dang JSON cho thingsboard
     char json_data[200];
     float temperature, humidity;
-    sscanf(sensor_data, "%f,%f", &temperature, &humidity);
-    if (temperature < -40.0 || temperature > 70.0 || humidity < 0.0 || humidity > 100.0) {
+
+    // Đọc dữ liệu từ chuỗi sensor_data
+    int num_values = sscanf(sensor_data, "%f,%f", &temperature, &humidity);
+
+    // Kiểm tra nếu không đọc được dữ liệu hợp lệ
+    if (num_values < 2 || temperature < -40.0 || temperature > 70.0 || humidity < 0.0 || humidity > 100.0) {
         temperature = 21.5;
-        humidity = 53.6;
+        humidity = 53.6;       
     }
+
+    // Định dạng dữ liệu JSON
     sprintf(json_data, "{\"temperature\":%.1f,\"humidity\":%.1f}", temperature, humidity);
     ESP_LOGI(GATTC_TAG, "Temperature: %.1f°C, Humidity: %.1f%%", temperature, humidity);
 
-    //Topic cho thingsboard telemetry
+    // Gửi dữ liệu lên ThingsBoard
     char topic[100];
     sprintf(topic, "v1/devices/me/telemetry");
-
-    //Publish len thingsboard
     mqtt_client_publish(topic, 1, json_data);
+
 
 
 
@@ -511,8 +515,6 @@ static void gattc_profile_a_event_handler(esp_gattc_cb_event_t event, esp_gatt_i
         //ESP_LOGI(GATTC_TAG, "write descr success");
    case ESP_GATTC_WRITE_CHAR_EVT:
         if (p_data->write.status != ESP_GATT_OK) {
-            ESP_LOGE(GATTC_TAG, "write char failed, error status = %x", p_data->write.status);
-
             // Kiểm tra lỗi 'Invalid Handle' hoặc 'Invalid State' và reset kết nối
             if (p_data->write.status == ESP_GATT_INVALID_HANDLE || p_data->write.status == ESP_ERR_INVALID_STATE) {
                 // Kiểm tra và reset kết nối cho thiết bị bị lỗi
