@@ -28,6 +28,7 @@
 
 #include "DHT22_header.h"
 #include "cpu_measure.h"
+#include "input_header.h"
 
 #define LED_HIGH_TEMPERATURE GPIO_NUM_18
 #define LED_NORMAL_TEMPERATURE GPIO_NUM_19
@@ -595,7 +596,7 @@ void Temperature_Measurement_Task(void * parameter) {
 
             ble_send_time_out = 0; // Sử dụng biến toàn cục
             while (ble_send_time_out <= 10) {
-                if (xSemaphoreTake(Ack_sem, 2500 / portTICK_PERIOD_MS) == pdFALSE) {
+                if (xSemaphoreTake(Ack_sem, 100 / portTICK_PERIOD_MS) == pdFALSE) {
                     ESP_LOGE(GATTS_TABLE_TAG, "Timeout waiting for ACK, resending...");
                     esp_ble_gatts_send_indicate(
                         heart_rate_profile_tab[0].gatts_if,
@@ -613,11 +614,9 @@ void Temperature_Measurement_Task(void * parameter) {
                 }
             }
             if (ble_send_time_out > 10) {
-                ESP_LOGE(GATTS_TABLE_TAG, "Bluetooth connection broken, entering error state");
-                while (1) {
-                    ESP_LOGE(GATTS_TABLE_TAG, "Bluetooth repair required");
-                    vTaskDelay(500 / portTICK_PERIOD_MS);
-                }
+                ESP_LOGI(GATTS_TABLE_TAG, "Entering deep sleep mode due to Bluetooth timeout");
+                example_deep_sleep_register_rtc_timer_wakeup();
+
             }
         }
 
@@ -638,75 +637,74 @@ void Temperature_Measurement_Task(void * parameter) {
 
 
 
-void app_main(void)
-{
-    esp_err_t ret;
+void app_main(void) {
 
+    esp_err_t ret;
     /* Initialize NVS. */
     ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
-    ESP_ERROR_CHECK( ret );
+    ESP_ERROR_CHECK(ret);
 
     example_deep_sleep_register_rtc_timer_wakeup();
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
-
+    
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     ret = esp_bt_controller_init(&bt_cfg);
     if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "%s enable controller failed: %s", __func__, esp_err_to_name(ret));
         return;
     }
-
+    
     ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
     if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "%s enable controller failed: %s", __func__, esp_err_to_name(ret));
         return;
     }
-
+    
     ret = esp_bluedroid_init();
     if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "%s init bluetooth failed: %s", __func__, esp_err_to_name(ret));
         return;
     }
-
+    
     ret = esp_bluedroid_enable();
     if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "%s enable bluetooth failed: %s", __func__, esp_err_to_name(ret));
         return;
     }
-
+    
     ret = esp_ble_gatts_register_callback(gatts_event_handler);
-    if (ret){
+    if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "gatts register error, error code = %x", ret);
         return;
     }
-
+    
     ret = esp_ble_gap_register_callback(gap_event_handler);
-    if (ret){
+    if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "gap register error, error code = %x", ret);
         return;
     }
-
+    
     ret = esp_ble_gatts_app_register(ESP_APP_ID);
-    if (ret){
+    if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "gatts app register error, error code = %x", ret);
         return;
     }
-
+    
     esp_err_t local_mtu_ret = esp_ble_gatt_set_local_mtu(500);
-    if (local_mtu_ret){
-        ESP_LOGE(GATTS_TABLE_TAG, "set local  MTU failed, error code = %x", local_mtu_ret);
+    if (local_mtu_ret) {
+        ESP_LOGE(GATTS_TABLE_TAG, "set local MTU failed, error code = %x", local_mtu_ret);
     }
     
-
     Ack_sem = xSemaphoreCreateBinary();
     Task_start_sem = xSemaphoreCreateBinary();
     DHT22_init();
     perfmon_start();
-    xTaskCreate(Temperature_Measurement_Task, "task",2048,NULL,2,&Tem_handle);
+    xTaskCreate(Temperature_Measurement_Task, "task", 2048, NULL, 2, &Tem_handle);
+
 
 }
 

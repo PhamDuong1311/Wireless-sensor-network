@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "input_header.h": "c"
+        "input_header.h": "c",
+        "stdio.h": "c"
     }
 }

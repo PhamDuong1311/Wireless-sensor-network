@@ -457,53 +457,46 @@ static void gattc_profile_a_event_handler(esp_gattc_cb_event_t event, esp_gatt_i
     }
 
 
-    //Change Can them code de publish data on the thingsboard
     case ESP_GATTC_NOTIFY_EVT:
+        // Cập nhật current_node dựa trên ID kết nối
         connid_handle(param->notify.conn_id);
-        ESP_LOGI(GATTC_TAG, "ESP_GATTC_NOTIFY_EVT, Receive notify value of node %d  ", current_node);
+        ESP_LOGI(GATTC_TAG, "ESP_GATTC_NOTIFY_EVT, Receive notify value of node %d", current_node);
         
+        // Parse dữ liệu nhận được từ sensor
+        char sensor_data[100];
+        memcpy(sensor_data, param->notify.value, param->notify.value_len);
+        sensor_data[param->notify.value_len] = '\0'; // Đảm bảo chuỗi kết thúc đúng cách
 
-    // Parse dw lieu nhan duoc tu sensor
-    char sensor_data[100];
-    memcpy(sensor_data, param->notify.value,param->notify.value_len);
-    sensor_data[param->notify.value_len] = '\0';
+        char json_data[200];
+        float temperature, humidity;
 
+        // Đọc dữ liệu từ chuỗi sensor_data
+        int num_values = sscanf(sensor_data, "%f,%f", &temperature, &humidity);
 
-    char json_data[200];
-    float temperature, humidity;
+        // Kiểm tra nếu không đọc được dữ liệu hợp lệ
+        if (num_values < 2 || temperature < -40.0 || temperature > 70.0 || humidity < 0.0 || humidity > 100.0) {
+            temperature = 21.5; // Giá trị mặc định
+            humidity = 53.6;      
+        }
 
-    // Đọc dữ liệu từ chuỗi sensor_data
-    int num_values = sscanf(sensor_data, "%f,%f", &temperature, &humidity);
+        // Định dạng dữ liệu JSON
+        sprintf(json_data, "{\"node_id\":%d,\"temperature\":%.1f,\"humidity\":%.1f}", current_node, temperature, humidity);
+        ESP_LOGI(GATTC_TAG, "Node %d - Temperature: %.1f°C, Humidity: %.1f%%", current_node, temperature, humidity);
 
-    // Kiểm tra nếu không đọc được dữ liệu hợp lệ
-    if (num_values < 2 || temperature < -40.0 || temperature > 70.0 || humidity < 0.0 || humidity > 100.0) {
-        temperature = 21.5;
-        humidity = 53.6;       
-    }
+        // Gửi dữ liệu lên ThingsBoard
+        char topic[100];
+        sprintf(topic, "v1/devices/me/telemetry");
+        mqtt_client_publish(topic, 1, json_data);
 
-    // Định dạng dữ liệu JSON
-    sprintf(json_data, "{\"temperature\":%.1f,\"humidity\":%.1f}", temperature, humidity);
-    ESP_LOGI(GATTC_TAG, "Temperature: %.1f°C, Humidity: %.1f%%", temperature, humidity);
-
-    // Gửi dữ liệu lên ThingsBoard
-    char topic[100];
-    sprintf(topic, "v1/devices/me/telemetry");
-    mqtt_client_publish(topic, 1, json_data);
-
-
-
-
-
-       //Gui ACK ve cho sensor
-        uint8_t * ack = (uint8_t *) "ack";
-        esp_ble_gattc_write_char( remote_device[current_node].gattc,
-                                  remote_device[current_node].conn_id,
-                                  gl_profile_tab[PROFILE_A_APP_ID].char_handle,
-                                  strlen((char*)ack),
-                                  ack,
-                                  ESP_GATT_WRITE_TYPE_RSP,
-                                  ESP_GATT_AUTH_REQ_NONE);
-
+        // Gửi ACK về cho sensor
+        const char *ack = "ack"; // Sử dụng chuỗi hằng
+        esp_ble_gattc_write_char(remote_device[current_node].gattc,
+                                remote_device[current_node].conn_id,
+                                gl_profile_tab[PROFILE_A_APP_ID].char_handle,
+                                strlen(ack),
+                                (uint8_t *)ack,
+                                ESP_GATT_WRITE_TYPE_RSP,
+                                ESP_GATT_AUTH_REQ_NONE);
         break;
     case ESP_GATTC_WRITE_DESCR_EVT:
         if (p_data->write.status != ESP_GATT_OK){
@@ -620,7 +613,6 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
 
                     // Kiểm tra điều kiện kết nối
                     if (scan_result->scan_rst.bda[0] == 0xa0 && scan_result->scan_rst.bda[1] == 0xdd) {
-                        ESP_ERROR_CHECK(esp_ble_gap_stop_scanning());
                         stop_scan_done = true;
                         esp_ble_gattc_open(gl_profile_tab[PROFILE_A_APP_ID].gattc_if, 
                                         scan_result->scan_rst.bda, 
@@ -700,8 +692,8 @@ void scan_request_callback(int gpio_num){
     }
 }
 
-#define WIFI_SSID      "Anh Hai_EXT"
-#define WIFI_PASSWORD  "66666666"
+#define WIFI_SSID      "Tầng 3"
+#define WIFI_PASSWORD  "bunrieucua"
 #define MAXIMUM_RETRY  5
 
 static int s_retry_num = 0;
